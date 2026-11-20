@@ -1,0 +1,25 @@
+{
+  "name": "secure-notes/api",
+  "description": "Plain PHP 8.5 API for the secure notes interview task",
+  "license": "proprietary",
+  "type": "project",
+  "require": {
+    "php": "^8.5",
+    "ext-curl": "*",
+    "ext-json": "*",
+    "firebase/php-jwt": "^7.2",
+    "vlucas/phpdotenv": "^5.6"
+  },
+  "autoload": {
+    "psr-4": {
+      "App\\": "src/"
+    }
+  },
+  "scripts": {
+    "check": "php -l public/index.php",
+    "test": "@php tests/FoundationTest.php"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}

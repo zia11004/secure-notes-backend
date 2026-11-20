@@ -1,0 +1,8 @@
+/.env
+/api/.env
+/api/vendor/
+/api/var/rate-limit/*
+!/api/var/rate-limit/.gitkeep
+/data-service/.env
+/data-service/node_modules/
+/.DS_Store

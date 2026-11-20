@@ -1,0 +1,24 @@
+[Unit]
+Description=Secure Notes private data service
+After=network-online.target mongod.service
+Wants=network-online.target
+Requires=mongod.service
+
+[Service]
+Type=simple
+User=noteapp
+Group=noteapp
+WorkingDirectory=/var/www/note-taking-app/data-service
+EnvironmentFile=/etc/note-taking-app/data-service.env
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/note-taking-app/data-service
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

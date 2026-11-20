@@ -1,0 +1,108 @@
+name: secure-notes-local
+
+services:
+  mongo-keyfile:
+    image: mongo:8.0.30-noble
+    user: "0:0"
+    command: ["bash", "/mongo-keyfile.sh"]
+    volumes:
+      - mongo-keyfile:/keyfile
+      - ./docker/mongo-keyfile.sh:/mongo-keyfile.sh:ro
+    networks:
+      - database
+    restart: "no"
+
+  mongo:
+    image: mongo:8.0.30-noble
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--keyFile", "/keyfile/key", "--wiredTigerCacheSizeGB", "0.25"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:?Set MONGO_USERNAME in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD in .env}
+    depends_on:
+      mongo-keyfile:
+        condition: service_completed_successfully
+    volumes:
+      - mongo-data:/data/db
+      - mongo-keyfile:/keyfile:ro
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ ping: 1 }).ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  mongo-init:
+    image: mongo:8.0.30-noble
+    env_file: ./.env
+    depends_on:
+      mongo:
+        condition: service_healthy
+    command: ["bash", "/mongo-init.sh"]
+    volumes:
+      - ./docker/mongo-init.sh:/mongo-init.sh:ro
+    networks:
+      - database
+    restart: "no"
+
+  data-service:
+    build: ./data-service
+    env_file: ./data-service/.env
+    environment:
+      HOST: 0.0.0.0
+      MONGODB_URI: mongodb://${MONGO_APP_USERNAME:?Set MONGO_APP_USERNAME in .env}:${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD in .env}@mongo:27017/secure_notes?authSource=secure_notes&replicaSet=rs0
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    networks:
+      - database
+      - application
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health', {headers: {'x-service-token': process.env.INTERNAL_SERVICE_TOKEN}}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    env_file: ./api/.env
+    environment:
+      DATA_SERVICE_URL: http://data-service:3001
+    depends_on:
+      data-service:
+        condition: service_healthy
+    networks:
+      - application
+    volumes:
+      - api-rate-limit:/app/var/rate-limit
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ./api
+      dockerfile: nginx/Dockerfile
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - application
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/api/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+networks:
+  application:
+  database:
+    internal: true
+
+volumes:
+  mongo-data:
+  mongo-keyfile:
+  api-rate-limit:

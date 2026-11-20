@@ -1,0 +1,6 @@
+FROM nginx:stable-alpine
+
+COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY public /app/public
+
+EXPOSE 8000

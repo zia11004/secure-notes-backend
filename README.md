@@ -36,43 +36,42 @@ data-service/         Private Express/Mongoose service
   src/models/         MongoDB schemas and indexes
   src/repositories/   Queries and aggregation pipelines
   src/services/       Transactional operations
-docker/               Local MongoDB replica-set initialization
-deploy/native/        Rocky Linux production templates
-tests/                End-to-end feature test
 ```
 
 The browser calls only the PHP API. PHP authenticates and authorizes the request before using a separate internal token to call the loopback/private data service. MongoDB runs as an authenticated one-member replica set because account deletion uses a transaction.
 
-## Local Docker setup
+## Local setup
 
-Requirements: Docker with Compose and Python 3.9 or newer.
-
-```bash
-python3 scripts/init-env.py
-docker compose up --build -d
-curl http://127.0.0.1:8000/api/ready
-```
-
-The initialization script creates independent random MongoDB credentials, a JWT secret, and a private service token. It never prints or overwrites existing secrets. Filled `.env` files are ignored by Git.
-
-Useful commands:
+Requirements: PHP 8.5 with Composer, Node.js 22 or newer, and MongoDB 8 configured as a single-member replica set.
 
 ```bash
-docker compose ps
-docker compose logs --tail=100 api data-service gateway mongo
-docker compose exec -T data-service npm run indexes
-docker compose down
+cp api/.env.example api/.env
+cp data-service/.env.example data-service/.env
+composer --working-dir=api install
+npm --prefix data-service ci
 ```
 
-`docker compose down` retains the MongoDB volume. Do not remove volumes unless permanent local data deletion is intended.
+Replace the example JWT and internal-service secrets with independent random values of at least 32 characters. `DATA_SERVICE_TOKEN` and `INTERNAL_SERVICE_TOKEN` must contain the same value. Configure `MONGODB_URI` for the local authenticated replica set, then initialize the indexes:
+
+```bash
+npm --prefix data-service run indexes
+```
+
+Start the two application processes in separate terminals:
+
+```bash
+npm --prefix data-service start
+php -S 127.0.0.1:8000 -t api/public api/public/index.php
+```
+
+Verify the complete backend with `curl http://127.0.0.1:8000/api/ready`.
 
 ## Environment
 
-Start from `.env.example`, `api/.env.example`, and `data-service/.env.example`.
+Start from `api/.env.example` and `data-service/.env.example`.
 
 | File | Important variables |
 | --- | --- |
-| `.env` | `MONGO_USERNAME`, `MONGO_PASSWORD`, `MONGO_APP_USERNAME`, `MONGO_APP_PASSWORD` |
 | `api/.env` | `APP_ENV`, `APP_DEBUG`, `APP_URL`, `JWT_SECRET`, `DATA_SERVICE_URL`, `DATA_SERVICE_TOKEN`, `FRONTEND_ORIGINS`, `RATE_LIMIT_PER_MINUTE` |
 | `data-service/.env` | `NODE_ENV`, `HOST`, `PORT`, `MONGODB_URI`, `INTERNAL_SERVICE_TOKEN` |
 
@@ -111,13 +110,7 @@ Passwords require 6–128 bytes and confirmation for registration or password ch
 Register an account first. A fresh database assigns `110001` to the first successful registration. Promote it locally with:
 
 ```bash
-docker compose exec -T api php bin/promote-admin.php 110001
-```
-
-On the deployed Rocky Linux server:
-
-```bash
-sudo /opt/remi/php85/root/usr/bin/php /var/www/note-taking-app/api/bin/promote-admin.php 110001
+php api/bin/promote-admin.php 110001
 ```
 
 Sign out and back in after promotion. The command also accepts an email address.
@@ -125,22 +118,8 @@ Sign out and back in after promotion. The command also accepts an email address.
 ## Tests
 
 ```bash
-docker compose run --rm --no-deps -v "$PWD/api/tests:/app/tests:ro" api composer test
-docker compose run --rm --no-deps -v "$PWD/data-service/test:/app/test:ro" data-service npm test
-python3 tests/e2e.py
+composer --working-dir=api test
+npm --prefix data-service test
 ```
 
-The end-to-end test covers authentication, ownership, permissions, custom roles, pagination, public posts, interest groups, and transactional cleanup.
-
-## Production deployment
-
-The current backend is installed natively at `/var/www/note-taking-app` on Rocky Linux; production does not use Docker. The service map is:
-
-| Component | Binding |
-| --- | --- |
-| Nginx and PHP 8.5 FPM | Public HTTPS API |
-| `note-taking-data.service` | `127.0.0.1:3001` |
-| MongoDB replica set `rs0` | `127.0.0.1:27017` |
-| `note-taking-backup.timer` | Daily compressed backup, seven-day retention |
-
-Native service, PHP pool, Nginx, MongoDB, and backup templates are under `deploy/native`. Production secrets must remain in protected server environment files and must never be committed.
+The PHP foundation test covers configuration, validation, routing, and permission behavior. The Node test verifies private-service authentication and readiness handling.

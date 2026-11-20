@@ -49,7 +49,7 @@ final readonly class AppConfig
         $serviceHost = parse_url($dataServiceUrl, PHP_URL_HOST);
         if (parse_url($dataServiceUrl, PHP_URL_SCHEME) !== 'http'
             || ! in_array($serviceHost, ['127.0.0.1', 'data-service'], true)) {
-            throw new InvalidArgumentException('DATA_SERVICE_URL must use a private local or Compose service host.');
+            throw new InvalidArgumentException('DATA_SERVICE_URL must use a private service host.');
         }
 
         $originList = self::required('FRONTEND_ORIGINS');
